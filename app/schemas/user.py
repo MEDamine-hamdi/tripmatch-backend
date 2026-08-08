@@ -27,6 +27,10 @@ class UserOut(BaseModel):
     """Données renvoyées au client (jamais le mot de passe)."""
     id: int
     email: EmailStr
+    first_name: str | None = None
+    last_name: str | None = None
+    phone: str | None = None
+    profile_photo_url: str | None = None
     is_verified: bool
     is_active: bool
     created_at: datetime
@@ -73,3 +77,22 @@ class ResetPasswordRequest(BaseModel):
 class MessageResponse(BaseModel):
     """Réponse générique avec un message de confirmation."""
     message: str
+
+
+class ProfileUpdate(BaseModel):
+    """Données reçues pour mettre à jour le profil (US-05)."""
+    first_name: str | None = None
+    last_name: str | None = None
+    phone: str | None = None
+
+class PublicProfile(BaseModel):
+    """Profil public d'un utilisateur, visible par les autres (US-15)."""
+    id: int
+    first_name: str | None = None
+    last_name: str | None = None
+    profile_photo_url: str | None = None
+    is_verified: bool
+    created_at: datetime  # utilisé pour calculer l'ancienneté du compte
+
+    class Config:
+        from_attributes = True

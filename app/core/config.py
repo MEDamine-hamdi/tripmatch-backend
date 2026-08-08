@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     BREVO_SMTP_KEY: str = ""
     BREVO_SENDER_EMAIL: str = "noreply@tripmatch.tn"
     BREVO_SENDER_NAME: str = "TripMatch"
-
+    # Cloudinary (upload photos de profil)
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
     # Frontend (liens dans les emails)
     FRONTEND_URL: str = "https://tripmatch.app"
 
