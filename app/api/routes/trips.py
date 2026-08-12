@@ -4,10 +4,11 @@ from datetime import date, datetime, time
 from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.models.user import User
-from app.models.trip import Trip
+from app.models.trip import Trip, TripStatus
 from app.schemas.trip import TripCreate, TripOut
 from app.api.deps import get_current_user
-
+from app.models.reservation import Reservation, ReservationStatus
+from app.models.notification import Notification, NotificationType
 
 
 
@@ -22,12 +23,11 @@ def create_trip(
 ):
     """Publie un nouveau trajet (US-06). Réservé aux conducteurs vérifiés."""
 
-    # TODO (à activer une fois US-17/18 construites) :
-    # if not current_user.is_driver_verified:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN,
-    #         detail="Seuls les conducteurs vérifiés peuvent publier un trajet.",
-    #     )
+    if not current_user.is_driver_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seuls les conducteurs vérifiés peuvent publier un trajet.",
+        )
 
     departure_coords = geocode_city(payload.departure_city)
     arrival_coords = geocode_city(payload.arrival_city)
@@ -79,3 +79,51 @@ def search_trips(
     trips = query.order_by(Trip.departure_datetime.asc()).all()
 
     return trips
+
+@router.delete("/{trip_id}", response_model=TripOut)
+def cancel_trip(
+    trip_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Annule un trajet publié (US-XX). Réservé au conducteur propriétaire.
+    Annule aussi automatiquement toutes les réservations actives liées,
+    et notifie chaque passager concerné."""
+    trip = db.query(Trip).options(joinedload(Trip.driver)).filter(Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trajet introuvable.")
+
+    if trip.driver_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vous ne pouvez annuler que vos propres trajets.",
+        )
+
+    if trip.status == TripStatus.CANCELLED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ce trajet est déjà annulé.")
+
+    # Annule toutes les réservations actives liées à ce trajet
+    active_reservations = (
+        db.query(Reservation)
+        .filter(Reservation.trip_id == trip_id, Reservation.status == ReservationStatus.CONFIRMED)
+        .all()
+    )
+
+    for reservation in active_reservations:
+        reservation.status = ReservationStatus.CANCELLED
+        notification = Notification(
+            user_id=reservation.passenger_id,
+            type=NotificationType.TRIP_CANCELLED,
+            message=f"Le trajet {trip.departure_city} → {trip.arrival_city} du "
+                    f"{trip.departure_datetime.strftime('%d/%m/%Y à %Hh%M')} a été annulé par le conducteur.",
+            trip_id=trip.id,
+            reservation_id=reservation.id,
+        )
+        db.add(notification)
+
+    trip.status = TripStatus.CANCELLED
+
+    db.commit()
+    db.refresh(trip)
+
+    return trip

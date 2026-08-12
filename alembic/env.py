@@ -7,6 +7,7 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from app.models.conversation import Conversation  # noqa: F401 — importé pour qu'Alembic voie le modèle
 from app.models.message import Message  # noqa: F401 — importé pour qu'Alembic voie le modèle
+from app.models.notification import Notification  # noqa: F401 — importé pour qu'Alembic voie le modèle  # noqa: F401 — importé pour qu'Alembic voie le modèle
 from alembic import context
 
 # Permet d'importer "app" depuis la racine du projet

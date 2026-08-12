@@ -8,7 +8,7 @@ from app.models.reservation import Reservation, ReservationStatus
 from app.schemas.reservation import ReservationCreate, ReservationOut
 from app.schemas.trip import TripOut
 from app.api.deps import get_current_user
-
+from app.models.notification import Notification, NotificationType
 router = APIRouter(tags=["Réservations"])
 
 
@@ -67,6 +67,19 @@ def create_reservation(
     db.commit()
     db.refresh(reservation)
 
+    # Notifie le conducteur qu'une nouvelle réservation a été faite sur son trajet
+    seats_label = "place" if payload.seats_booked == 1 else "places"
+    notification = Notification(
+        user_id=trip.driver_id,
+        type=NotificationType.NEW_RESERVATION,
+        message=f"Nouvelle réservation : {payload.seats_booked} {seats_label} sur votre trajet "
+                f"{trip.departure_city} → {trip.arrival_city}.",
+        trip_id=trip.id,
+        reservation_id=reservation.id,
+    )
+    db.add(notification)
+    db.commit()
+
     return reservation
 
 
@@ -97,6 +110,20 @@ def cancel_reservation(
     reservation.status = ReservationStatus.CANCELLED
     db.commit()
     db.refresh(reservation)
+
+    # Notifie le conducteur que le passager a annulé sa réservation
+    if trip:
+        seats_label = "place" if reservation.seats_booked == 1 else "places"
+        notification = Notification(
+            user_id=trip.driver_id,
+            type=NotificationType.RESERVATION_CANCELLED,
+            message=f"Réservation annulée : {reservation.seats_booked} {seats_label} libérée(s) sur votre trajet "
+                    f"{trip.departure_city} → {trip.arrival_city}.",
+            trip_id=trip.id,
+            reservation_id=reservation.id,
+        )
+        db.add(notification)
+        db.commit()
 
     return reservation
 

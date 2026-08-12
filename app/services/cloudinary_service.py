@@ -24,3 +24,18 @@ def upload_profile_photo(file_bytes: bytes, user_id: int) -> str:
         ],
     )
     return result["secure_url"]
+
+
+def upload_driver_document(file_bytes: bytes, user_id: int) -> str:
+    """Upload un document de vérification conducteur (permis, CIN, carte étudiant)
+    sur Cloudinary et retourne l'URL sécurisée. Pas de recadrage ni de transformation
+    de visage ici, contrairement à la photo de profil, car ce sont des documents
+    d'identité qui doivent rester lisibles et non recadrés."""
+    result = cloudinary.uploader.upload(
+        file_bytes,
+        folder="tripmatch/driver_documents",
+        public_id=f"user_{user_id}",
+        overwrite=True,
+        resource_type="image",
+    )
+    return result["secure_url"]

@@ -1,9 +1,23 @@
-﻿from datetime import datetime, timezone
+﻿import enum
+from datetime import datetime, timezone
 
-from sqlalchemy import String, Boolean, DateTime
+from sqlalchemy import String, Boolean, DateTime, Enum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
+
+
+class DriverVerificationStatus(str, enum.Enum):
+    UNSUBMITTED = "unsubmitted"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class DriverDocumentType(str, enum.Enum):
+    DRIVING_LICENSE = "driving_license"
+    NATIONAL_ID = "national_id"
+    STUDENT_CARD = "student_card"
 
 
 class User(Base):
@@ -22,6 +36,18 @@ class User(Base):
     # Statut du compte
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Vérification d'identité conducteur (US-17/18)
+    is_driver_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    driver_verification_status: Mapped[DriverVerificationStatus] = mapped_column(
+        Enum(DriverVerificationStatus), default=DriverVerificationStatus.UNSUBMITTED, nullable=False
+    )
+    driver_document_type: Mapped[DriverDocumentType | None] = mapped_column(
+        Enum(DriverDocumentType), nullable=True
+    )
+    driver_document_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    driver_verification_rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

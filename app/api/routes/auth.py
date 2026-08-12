@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.models.token import Token, TokenType
 from app.schemas.user import UserCreate, UserOut
-from app.core.security import hash_password
+from app.core.security import hash_password, decode_token
+import jwt
 from app.core.config import settings
 from app.services.email import send_verification_email
 from fastapi.responses import HTMLResponse
@@ -16,11 +17,16 @@ from app.schemas.user import (
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token
 
 from app.services.email import send_verification_email, send_password_reset_email
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def register(user_in: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/hour")
+def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db)):
     # 1. Vérifier que l'email n'est pas déjà utilisé
     existing_user = db.query(User).filter(User.email == user_in.email).first()
     if existing_user:
@@ -184,7 +190,8 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(credentials: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, credentials: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == credentials.email).first()
 
     if not user or not verify_password(credentials.password, user.hashed_password):
@@ -210,8 +217,10 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)):
 
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
+
 @router.post("/forgot-password", response_model=MessageResponse)
-def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/hour")
+def forgot_password(request: Request, payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
     generic_message = MessageResponse(
         message="Si un compte existe avec cet email, un lien de réinitialisation a été envoyé."
     )
@@ -237,7 +246,8 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
 
 
 @router.post("/reset-password", response_model=MessageResponse)
-def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/hour")
+def reset_password(request: Request, payload: ResetPasswordRequest, db: Session = Depends(get_db)):
     token_obj = db.query(Token).filter(
         Token.token == payload.token,
         Token.token_type == TokenType.PASSWORD_RESET,
@@ -279,3 +289,49 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
 def get_me(current_user: User = Depends(get_current_user)):
     """Retourne les informations de l'utilisateur actuellement connecté."""
     return current_user
+
+
+@router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("30/hour")
+def refresh_access_token(request: Request, payload: dict, db: Session = Depends(get_db)):
+    """Génère un nouveau access_token à partir d'un refresh_token valide.
+    Le refresh_token est aussi renouvelé (rotation), pour limiter la fenêtre
+    d'exploitation si un refresh_token venait à fuiter."""
+    refresh_token = payload.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="refresh_token manquant.",
+        )
+
+    try:
+        decoded = decode_token(refresh_token)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token expiré. Veuillez vous reconnecter.",
+        )
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token invalide.",
+        )
+
+    if decoded.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Type de token invalide.",
+        )
+
+    user_id = int(decoded.get("sub"))
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Compte introuvable ou désactivé.",
+        )
+
+    new_access_token = create_access_token(user.id)
+    new_refresh_token = create_refresh_token(user.id)
+
+    return TokenResponse(access_token=new_access_token, refresh_token=new_refresh_token)
