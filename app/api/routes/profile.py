@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.file_validation import validate_image_content
 from app.models.user import DriverVerificationStatus, DriverDocumentType
 from app.schemas.user import DriverVerificationOut
 from app.services.cloudinary_service import upload_driver_document
@@ -56,6 +57,11 @@ async def upload_photo(
             detail=f"L'image ne doit pas dépasser {MAX_IMAGE_SIZE_MB} Mo.",
         )
 
+    try:
+        validate_image_content(file_bytes)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
     photo_url = upload_profile_photo(file_bytes, current_user.id)
 
     current_user.profile_photo_url = photo_url
@@ -104,6 +110,11 @@ async def submit_driver_verification(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Le document ne doit pas dépasser {MAX_DOCUMENT_SIZE_MB} Mo.",
         )
+
+    try:
+        validate_image_content(file_bytes)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     document_url = upload_driver_document(file_bytes, current_user.id)
 

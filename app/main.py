@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.routes.profile import router as profile_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.trips import router as trips_router
@@ -19,9 +19,41 @@ from app.api.routes.admin import router as admin_router
 # (limiter = Limiter(key_func=get_remote_address, storage_uri="redis://...")).
 limiter = Limiter(key_func=get_remote_address)
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Ajoute des en-têtes HTTP de sécurité standards à chaque réponse."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # HSTS : force HTTPS côté navigateur une fois en prod avec un vrai certificat.
+        # Inoffensif en dev sur http://127.0.0.1 (le navigateur l'ignore hors HTTPS).
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+        return response
+
+MAX_REQUEST_SIZE_BYTES = 10 * 1024 * 1024  # 10 Mo (couvre les uploads d'images/documents)
+
+
+class LimitRequestSizeMiddleware(BaseHTTPMiddleware):
+    """Rejette les requêtes dont le corps dépasse une taille raisonnable,
+    avant même qu'elles ne soient traitées par les routes."""
+
+    async def dispatch(self, request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_REQUEST_SIZE_BYTES:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Le corps de la requête est trop volumineux."},
+            )
+        return await call_next(request)
+
 app = FastAPI(title="TripMatch API", version="0.1.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(LimitRequestSizeMiddleware)
 
 # CORS — nécessaire pour que l'app Flutter (web, en dev) puisse appeler l'API.
 # En développement, on autorise toutes les origines pour simplifier.
