@@ -1,6 +1,11 @@
+import logging
+import traceback
+
 import requests
 
 from app.core.config import settings
+
+logger = logging.getLogger("tripmatch.email")
 
 
 def _send_smtp_email(to_email: str, subject: str, html_body: str) -> None:
@@ -23,6 +28,17 @@ def _send_smtp_email(to_email: str, subject: str, html_body: str) -> None:
         },
         timeout=10,
     )
+
+    if not response.ok:
+        # Log Brevo's actual error body so we know WHY it failed
+        # (unverified sender, bad API key, etc.) instead of guessing.
+        logger.error(
+            "Brevo API error %s for %s: %s",
+            response.status_code,
+            to_email,
+            response.text,
+        )
+
     response.raise_for_status()
 
 
@@ -49,7 +65,16 @@ def send_verification_email(to_email: str, token: str) -> None:
             <p style="color: #888; font-size: 13px;">Ce lien expire dans {settings.EMAIL_VERIFICATION_EXPIRE_HOURS}h.</p>
         </div>
         """
-        _send_smtp_email(to_email, "Vérifiez votre compte TripMatch", html_body)
+        try:
+            _send_smtp_email(to_email, "Vérifiez votre compte TripMatch", html_body)
+        except Exception:
+            # Don't let an email provider failure 500 the registration —
+            # the user account was already created and committed at this point.
+            logger.error(
+                "Failed to send verification email to %s:\n%s",
+                to_email,
+                traceback.format_exc(),
+            )
         return
 
     raise NotImplementedError(f"Provider email inconnu : {settings.EMAIL_PROVIDER}")
@@ -78,7 +103,16 @@ def send_password_reset_email(to_email: str, token: str) -> None:
             <p style="color: #888; font-size: 13px;">Ce lien expire dans {settings.PASSWORD_RESET_EXPIRE_MINUTES} minutes.</p>
         </div>
         """
-        _send_smtp_email(to_email, "Réinitialisation de votre mot de passe TripMatch", html_body)
+        try:
+            _send_smtp_email(to_email, "Réinitialisation de votre mot de passe TripMatch", html_body)
+        except Exception:
+            # Same reasoning: don't fail the whole request just because
+            # the email provider is misconfigured or down.
+            logger.error(
+                "Failed to send password reset email to %s:\n%s",
+                to_email,
+                traceback.format_exc(),
+            )
         return
 
     raise NotImplementedError(f"Provider email inconnu : {settings.EMAIL_PROVIDER}")
