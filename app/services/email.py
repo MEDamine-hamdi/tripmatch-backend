@@ -1,22 +1,29 @@
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 
 from app.core.config import settings
 
 
 def _send_smtp_email(to_email: str, subject: str, html_body: str) -> None:
-    """Envoie un email via le relais SMTP de Brevo."""
-    message = MIMEMultipart("alternative")
-    message["Subject"] = subject
-    message["From"] = f"{settings.BREVO_SENDER_NAME} <{settings.BREVO_SENDER_EMAIL}>"
-    message["To"] = to_email
-    message.attach(MIMEText(html_body, "html"))
-
-    with smtplib.SMTP(settings.BREVO_SMTP_HOST, settings.BREVO_SMTP_PORT) as server:
-        server.starttls()
-        server.login(settings.BREVO_SMTP_LOGIN, settings.BREVO_SMTP_KEY)
-        server.sendmail(settings.BREVO_SENDER_EMAIL, [to_email], message.as_string())
+    """Envoie un email via l'API HTTP de Brevo (le SMTP sortant est bloqué sur Railway)."""
+    response = requests.post(
+        "https://api.brevo.com/v3/smtp/email",
+        headers={
+            "accept": "application/json",
+            "api-key": settings.BREVO_API_KEY,
+            "content-type": "application/json",
+        },
+        json={
+            "sender": {
+                "name": settings.BREVO_SENDER_NAME,
+                "email": settings.BREVO_SENDER_EMAIL,
+            },
+            "to": [{"email": to_email}],
+            "subject": subject,
+            "htmlContent": html_body,
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
 
 
 def send_verification_email(to_email: str, token: str) -> None:
