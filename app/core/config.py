@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # Email
     EMAIL_PROVIDER: str = "console"  # "console" | "brevo"
     BREVO_SMTP_HOST: str = "smtp-relay.brevo.com"
-    BREVO_SMTP_PORT: int = 587
+    BREVO_SMTP_PORT: int = 2525
     BREVO_SMTP_LOGIN: str = ""
     BREVO_SMTP_KEY: str = ""
     BREVO_SENDER_EMAIL: str = "noreply@tripmatch.tn"
