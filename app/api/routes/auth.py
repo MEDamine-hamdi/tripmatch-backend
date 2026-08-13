@@ -67,10 +67,15 @@ from datetime import datetime, timezone
 
 def _verification_page(success: bool, title: str, message: str) -> str:
     """Génère une page HTML autonome (pas de dépendance externe) pour le
-    lien de vérification email, dans les couleurs de la marque TripMatch."""
+    lien de vérification email, dans les couleurs de la marque TripMatch.
+    Tente aussi d'ouvrir directement l'application via deep link
+    (tripmatch://verify?status=success|error), avec un bouton de secours
+    si la redirection automatique ne fonctionne pas."""
     icon = "✓" if success else "✕"
     accent = "#16a34a" if success else "#dc2626"
     accent_bg = "#dcfce7" if success else "#fee2e2"
+    deep_link_status = "success" if success else "error"
+    deep_link = f"tripmatch://verify?status={deep_link_status}"
 
     return f"""
     <!DOCTYPE html>
@@ -130,6 +135,17 @@ def _verification_page(success: bool, title: str, message: str) -> str:
                 font-weight: 600;
                 letter-spacing: 0.5px;
             }}
+            .open-app-btn {{
+                margin-top: 24px;
+                display: inline-block;
+                background: #2563eb;
+                color: white;
+                padding: 12px 28px;
+                border-radius: 10px;
+                text-decoration: none;
+                font-size: 15px;
+                font-weight: 600;
+            }}
         </style>
     </head>
     <body>
@@ -137,8 +153,15 @@ def _verification_page(success: bool, title: str, message: str) -> str:
             <div class="icon-circle">{icon}</div>
             <h1>{title}</h1>
             <p>{message}</p>
+            <a class="open-app-btn" href="{deep_link}">Ouvrir l'application TripMatch</a>
             <div class="brand">TRIPMATCH</div>
         </div>
+        <script>
+            // Tentative d'ouverture automatique de l'application.
+            // Le bouton ci-dessus sert de secours si la redirection
+            // automatique est bloquée ou si l'app n'est pas installée.
+            window.location.href = "{deep_link}";
+        </script>
     </body>
     </html>
     """
