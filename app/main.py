@@ -12,7 +12,7 @@ from app.api.routes.reservations import router as reservations_router
 from app.api.routes.messages import router as messages_router
 from app.api.routes.notifications import router as notifications_router
 from app.api.routes.admin import router as admin_router
-
+from app.api.routes.ratings import router as ratings_router
 # Rate limiter en mémoire, basé sur l'adresse IP de la requête.
 # Suffisant pour un seul serveur ; si l'app est un jour déployée sur
 # plusieurs instances, migrer vers un backend Redis partagé
@@ -72,6 +72,7 @@ app.include_router(reservations_router)
 app.include_router(messages_router)
 app.include_router(notifications_router)
 app.include_router(admin_router)
+app.include_router(ratings_router)
 
 
 @app.get("/")
